@@ -1,0 +1,32 @@
+#!/bin/bash
+stdbuf -oL tail -f -n 0 'logs/<all>' |
+awk -vq="'" -vb='\' -vchan="$1" '/\<https?:/ && $4 == "PRIVMSG" && $5 == chan && ! /nospoiler$/ {
+  url = gensub(/.*\<http/,"http",1)
+  sub(/ .*/,"",url)
+  gsub(q, q b q q, url)
+  cmd = "timeout 3 curl -A " q "Mozilla/5.0 (X11; Linux x86_64; rv:50.0) Gecko/20100101 Firefox/50.0" q \
+        " -H " q "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" q \
+        " -sL " q url q "| grep -ioP " q "< *title( [^>]*)?>" b "K[^<]*" q
+  cmd | getline title
+  close(cmd)
+  gsub(/\r/, "", title)
+  gsub(/&(nbsp|#160);/, " ", title)
+  gsub(/&(lt|#60);/, "<", title)
+  gsub(/&(le|#8804);/, "<=", title)
+  gsub(/&(gt|#62);/, ">", title)
+  gsub(/&(ge|#8805);/, ">=", title)
+  gsub(/&(ne|#8800);/, "!=", title)
+  gsub(/&(ndash|#8211);/, "-", title)
+  gsub(/&(mdash|#8212);/, "--", title)
+  gsub(/&(laquo|#171);/, "<<", title)
+  gsub(/&(raquo|#187);/, ">>", title)
+  gsub(/&(copy|#169);/, "(c)", title)
+  gsub(/&(reg|#174);/, "(R)", title)
+  gsub(/&(trade|#8482);/, "(tm)", title)
+  gsub(/&(apos|#39);/, q, title)
+  gsub(/&(quot|#34);/, "\"", title)
+  gsub(/&(amp|#38);/, "\\&", title)
+  if (length(title)) print $4, $5, ":title:", title
+  title = ""
+  fflush()
+}' > fifo

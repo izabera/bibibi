@@ -1,0 +1,24 @@
+#!/bin/bash
+export LC_ALL=C TZ=GMT
+ncat --append-output -vvo serverlog -lkp 8080 -c '. /dev/fd/7' 7<< 'server' 2>>servererr
+if ! read -t1 -r protocol target _ || [[ $protocol != @(HEAD|GET) ]]; then
+  printf "HTTP/1.0 400 Bad Request\r\n\r\n"
+  exit 1
+fi
+printf -v target %b "${target//%/\\x}"
+if [[ $target = @(*/..|*/../*) || ! -e logs/$target ]]; then
+  printf "HTTP/1.0 404 Not Found\r\nConnection: close\r\n\r\n"
+  exit 1
+elif [[ -d logs/$target ]]; then
+  target+="/<all>"
+fi
+printf "HTTP/1.0 200 OK\r
+Date: %(%a, %d %b %Y %H:%M:%S %Z)T\r
+Content-Type: text/plain;charset=UTF-8\r
+Content-Length: %s\r
+Last-Modified: %(%a, %d %b %Y %H:%M:%S %Z)T\r
+Connection: close\r
+\r
+" -1 "$(stat -c %s "logs/$target")" "$(stat -c %Y "logs/$target")"
+if [[ $protocol = GET ]]; then cat "logs/$target"; fi
+server

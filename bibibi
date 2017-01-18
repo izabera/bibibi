@@ -1,0 +1,75 @@
+#!/bin/bash
+[[ -e fifo ]] || mkfifo fifo
+[[ -e logs ]] || mkdir logs
+
+[[ -e botscript ]] ||
+cat << 'bot' > botscript
+while cat fifo; do :; done &
+while read -r < slowfifo; do printf %s\\n "$REPLY" > fifo; sleep .5; done &
+#stdbuf -oL tail -f fifo &
+trap 'kill "$!"' exit
+echo CAP REQ :sasl
+echo NICK bibibi
+echo USER bibibi 0 0 :bibibi
+echo AUTHENTICATE PLAIN
+echo AUTHENTICATE YmliaWJpAGJpYmliaQBiaWJpYmkxODk2Nw==
+echo CAP END
+[[ -s autojoin ]] && echo join "$(< autojoin)"
+while read -r; do
+  [[ $REPLY = PING* ]] && echo "PO${REPLY:2}"
+done
+bot
+
+[[ -e logscript ]] ||
+cat << 'log' > logscript
+function escape(str) {
+  gsub(/'/, "'\\''", str)
+  return "'" str "'"
+}
+
+BEGIN { oldday = strftime("%F"); me = ":bibibi!~bibibi@bi/bi/bi"; IGNORECASE = 1 }
+{ day = strftime("%F") 
+  time = strftime("%T")
+  if (day != oldday) {
+    for (i in files) close(files[i])
+    delete files
+  }
+  sub(/\r$/, "" )
+}
+
+{ print day, time, $0 >> "logs/<all>"; fflush("logs/<all>") }
+$1 == "PRIVMSG" || $1 == "JOIN" || $1 == "PART" || $1 == "QUIT" || $1 == "MODE" { $0 = me " " $0 }
+
+$2 == "PRIVMSG" || $2 == "JOIN" || $2 == "PART" || $2 == "QUIT" || $2 == "MODE" {
+
+  user = gensub(/^([^!]*).*/, "\\1", 1, $1); sub(/^:/, "", user)
+  target = tolower($3); gsub(/\//, ",", target)
+  msg = gensub(/^[^ ]* +[^ ]* +[^ ]* +:(.*)/, "\\1", 1)
+
+  if (!(target in targets)) {
+    system("mkdir -p logs/" escape(target))
+    targets[target] = 1
+  }
+
+  file1 = "logs/" target "/" day
+  file2 = "logs/" target "/<all>"
+  files[file1] = 1
+
+  if ($2 == "PRIVMSG") {
+    print time, "<" user ">", msg >> file1
+    print time, "<" user ">", msg >> file2
+  }
+  else {
+    print time, $0 >> file1
+    print time, $0 >> file2
+  }
+  fflush(file1)
+  fflush(file2)
+}
+log
+
+while :; do
+  # dunno wtf is wrong with --ssl irc.freenode.net 6697 but it dies immediately after the banner
+  ncat -o >(awk -f logscript >>log) -c ". ./botscript" irc.freenode.net 6667
+  sleep 1
+done

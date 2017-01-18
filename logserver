@@ -1,0 +1,9 @@
+#!/bin/bash
+ncat -lkp 8080 -c '. /dev/fd/7' 7<< 'server'
+cat - log << cat
+HTTP/1.0 200 OK
+Content-Type: text/plain;charset=UTF-8
+Content-Length: $(stat -c %s log)
+
+cat
+server
